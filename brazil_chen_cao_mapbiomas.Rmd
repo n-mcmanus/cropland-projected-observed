@@ -16,9 +16,9 @@ library(kableExtra)
 library(tidyverse)
 ```
 
-## Read in Data
+## ROI
 
-Let's start with looking at Brazil, our ROI
+Let's start with looking at Brazil, our region of interest
 
 ```{r}
 # get brazil from rnaturalearth data
@@ -42,14 +42,13 @@ my_crs <- st_crs(brazil)
 ## Projected Cropland
 
 ### Chen et al. 2022
-First read in projected 2020 cropland from Chen et al. 2022
-Chen, G., Li, X., & Liu, X. (2022). Global land projection based on plant functional types with a 1-km resolution under socio-climatic scenarios. Scientific Data, 9(1), 125. https://doi.org/10.1038/s41597-022-01208-6
+First read in projected 2020 cropland from Chen et al. 2022. Then, crop and mask this global projection to just Brazil. Finally, reclassify the raster to keep only pixels representing cropland.
+
+Source: Chen, G., Li, X., & Liu, X. (2022). Global land projection based on plant functional types with a 1-km resolution under socio-climatic scenarios. Scientific Data, 9(1), 125. https://doi.org/10.1038/s41597-022-01208-6
+
 ```{r}
-# read in rasters with terra::rast
-# read in three different SSP scenarios for 2020
+# read in GeoTiff for SSP1 scenario (other scenarios will be examined later)
 chen_ssp1_2020_global <- rast("data/chen/global_PFT_SSP1_RCP26_2020.tif")
-#chen_ssp3_2020_global <- rast("data/chen/global_PFT_SSP3_RCP70_2020.tif")
-#chen_ssp5_2020_global <- rast("data/chen/global_PFT_SSP5_RCP85_2020.tif")
 
 # transform brazil to crop bc it's faster than re projecting the whole global raster
 brazil_trans <- brazil %>% 
@@ -57,49 +56,32 @@ brazil_trans <- brazil %>%
   vect() # vect is more agreeable to rasts
 
 # crop and mask chen data to brazil then project back to our dfs
-chen_ssp1_2020 <- chen_ssp1_2020_global %>% 
+chen_ssp1_2020_brazil <- chen_ssp1_2020_global %>% 
   crop(brazil_trans) %>% 
   mask(brazil_trans) %>% 
   terra::project(y = crs(brazil))
 
-#chen_ssp3_2020 <- chen_ssp3_2020_global %>% 
-  #crop(brazil_trans) %>% 
-  #mask(brazil_trans) %>% 
-  #terra::project(y = crs(brazil))
 
-#chen_ssp5_2020 <- chen_ssp5_2020_global %>% 
-  #crop(brazil_trans) %>% 
-  #mask(brazil_trans) %>% 
-  #terra::project(y = crs(brazil))
-
-# isolate just cropland from each raster
-chen_cropland_ssp1_2020 <- chen_ssp1_2020
-chen_cropland_ssp1_2020[chen_cropland_ssp1_2020 != 18] <- 0 # if value isn't 18, make 0
-chen_cropland_ssp1_2020[chen_cropland_ssp1_2020 == 18] <- 10 # if value is 18, make 10
+# isolate just cropland from the raster
+chen_crop_ssp1_2020_brazil <- chen_ssp1_2020_brazil
+chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil != 18] <- 0 # if value isn't 18, make 0
+chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil == 18] <- 10 # if value is 18, make 10
 
 
-#chen_cropland_ssp3_2020 <- chen_ssp3_2020
-#chen_cropland_ssp3_2020[chen_cropland_ssp3_2020 != 18] <- 0 
-#chen_cropland_ssp3_2020[chen_cropland_ssp3_2020 == 18] <- 1 
-
-#chen_cropland_ssp5_2020 <- chen_ssp5_2020
-#chen_cropland_ssp5_2020[chen_cropland_ssp5_2020 != 18] <- 0
-#chen_cropland_ssp5_2020[chen_cropland_ssp5_2020 == 18] <- 1
-
-plot(chen_cropland_ssp1_2020)
-#plot(chen_cropland_ssp3_2020)
-#plot(chen_cropland_ssp5_2020)
+plot(chen_crop_ssp1_2020_brazil)
 ```
  
  
  
 ### Cao et al., 2021
 This is where I will read in Cao data
+
+Source: 
 ```{r}
 cao_ssp1_2020_global <- rast("data/cao/globalCropland_2020CE_SSP1_RCP26.tif")
-#cao_ssp3_2020_global <- rast("data/cao/globalCropland_2020CE_SSP3_RCP70.tif")
-#cao_ssp5_2020_global <- rast("data/cao/globalCropland_2020CE_SSP5_RCP85.tif")
+
 ```
+
 
 
 
@@ -108,7 +90,7 @@ cao_ssp1_2020_global <- rast("data/cao/globalCropland_2020CE_SSP1_RCP26.tif")
 
 ## Observed Cropland
 For observed cropland in Brazil, we will use data from MapBiomas (Collection 6), which uses Landsat mosaics to classify LULC at 30m resolution. (More information and GeoTiff source found at: https://mapbiomas.org/en/colecoes-mapbiomas-1?cama_set_language=en)
-Cropland data for analysis will be defined as "Agriculture" from the MapBiomas classification, which includes temporary and perennial crops but omits poasture and mosaic agriculture.
+Cropland data for analysis will be defined as "Agriculture" from the MapBiomas classification, which includes temporary and perennial crops but omits pasture and mosaic agriculture.
 
 ```{r}
 # read in GeoTiff
@@ -126,14 +108,14 @@ mapbiomas_2020_agg <- aggregate(mapbiomas_2020,   #raster
                             na.rm = TRUE)         #don't drop entire aggregation bc of one NA
 
 # resample lower res mapbiomas_agg using Chen data to ensure same resolution
-mapbiomas_2020_resamp <- resample(mapbiomas_2020_agg, chen_cropland_ssp1_2020, method = "near")
+mapbiomas_2020_resamp <- resample(mapbiomas_2020_agg, chen_crop_ssp1_2020_brazil, method = "near")
 
+#creating new ROI shouldn't be necessary if crs(chen)==crs(mapbiomas). This isn't the case and needs to be fixed!
 brazil_trans2 <- brazil %>% 
   st_transform(crs = crs(mapbiomas_2020_resamp)) %>% 
   vect() # vect is more agreeable to rasts
 
-
-
+# crop and mask mapbiomas layer to ROI
 mapbiomas_2020_cropped <- mapbiomas_2020_resamp %>% 
   crop(brazil_trans2, mask = TRUE)
 
@@ -176,23 +158,24 @@ mapbiomas_2020_reclass <- classify(mapbiomas_2020_cropped, reclass_m)
 # use if you want to assign all 0 pixels to no data value
 #mapbiomas_reclass[mapbiomas_reclass == 0] <- NA
 
-plot(mapbiomas_2020_reclass)
-```
 
-
-```{r}
 # save intermediate rasters to save on computing time in future
 writeRaster(mapbiomas_2020_reclass, "data/mapbiomas_brasil_2020_cropland.tif")
+# skip steps above and read in saved raster below
+mapbiomas_crop_2020 <- rast("data/mapbiomas_brasil_2020_cropland.tif")
+
+
+plot(mapbiomas_crop_2020)
 ```
 
 
 
 Now we will add Chen and MapBiomas rasters to determine overlap between crop classifications
 ```{r}
-chen_mapbiomas <- mapbiomas_2020_reclass + chen_cropland_ssp1_2020
-plot(chen_mapbiomas)
+chen_mapbiomas_crop <- mapbiomas_crop_2020 + chen_crop_ssp1_2020_brazil
+plot(chen_mapbiomas_crop)
 
-counts <- freq(chen_mapbiomas)
+counts <- freq(chen_mapbiomas_crop)
 counts
 
 nocrop <- counts[1, 3]
@@ -202,4 +185,5 @@ crop_both <- counts[4,3]
 
 total <- nocrop + crop_mapbiomas_only + crop_chen_only + crop_both
 total
+ncell(chen_mapbiomas_crop) #discrepancy between two numbers...
 ```
