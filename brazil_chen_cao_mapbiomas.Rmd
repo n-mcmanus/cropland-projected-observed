@@ -223,9 +223,86 @@ fn <- crop_mapbiomas_only
 # sensitivity (true positive rate)
 tpr <- tp/p
 # specificity (true negative rate)
-tnr <- tn/p
+tnr <- tn/n
 # false positive rate
 fpr <- fp/n
 # false negative rate
-fnr <- fn/n
+fnr <- fn/p
+
+
+conf_matrix <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
+colnames(conf_matrix) <- c("Predicted Positive", "Predicted Negative")
+rownames(conf_matrix) <- c("Observed Positive", "Observed Negative")
+conf_matrix
+
+conf_matrix_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
+colnames(conf_matrix_perc) <- c("Predicted Positive", "Predicted Negative")
+rownames(conf_matrix_perc) <- c("Observed Positive", "Observed Negative")
+conf_matrix_perc
+
 ```
+
+
+## Checking baseline
+
+Checking the sensitivity and specificity of Chen vs Mapbiomas for 2015, both considered "observed" models.
+
+First read in, crop, mask, and reclassify 2015 Chen raster
+```{r}
+# read in GeoTiff for 2015 Chen
+chen_2015_global <- rast("data/chen/global_PFT_2015.tif")
+
+
+# crop and mask chen data to brazil_trans vector, then project back to our desired crs
+chen_2015_brazil <- chen_2015_global %>% 
+  crop(brazil_trans) %>% 
+  mask(brazil_trans) %>% 
+  terra::project(y = crs(brazil))
+
+# isolate just cropland from the raster
+chen_crop_2015_brazil <- chen_2015_brazil
+chen_crop_2015_brazil[chen_crop_2015_brazil != 18] <- 0 # if value isn't 18, make 0
+chen_crop_2015_brazil[chen_crop_2015_brazil == 18] <- 10 # if value is 18, make 10
+
+#plot(chen_crop_2015_brazil)
+```
+
+Next read in, crop, mask, and reclassify 2015 MapBiomas raster
+```{r}
+# WARNING: below analysis (aggregate step) will take a long time to run!
+# Once run, the last line of code in this chunk will save the intermediate raster locally.
+# If this has been already run once, skip running this chunk and move on to next
+
+
+# read in GeoTiff
+mapbiomas_2015 <- rast("data/mapbiomas_brasil_coverage_2015.tif")
+
+# change resolution from 30m to roughly 1km
+# to figure out factor that gets res closest to target raster (Chen), use this:
+    factor <- ceiling(res(chen_crop_2015_brazil)[1]/res(mapbiomas_2015)[1])
+    factor
+
+# now change resolution using terra:aggregate()
+mapbiomas_2015_agg <- aggregate(mapbiomas_2015,   #raster 
+                            fact = 34,            #agg factor (positive int)
+                            fun = "modal",        #categorical values in raster
+                            na.rm = TRUE)         #don't drop entire aggregation bc of one NA
+
+# resample lower res mapbiomas using Chen data to ensure same resolution (fine-tuning the res)
+mapbiomas_2015_resamp <- resample(mapbiomas_2015_agg, chen_crop_2015_brazil, method = "near")
+
+# crop and mask mapbiomas layer to ROI
+mapbiomas_2015_cropped <- mapbiomas_2015_resamp %>% 
+  crop(brazil_trans2, mask = TRUE)
+
+# use terra:classify() to reclassify raster values based on matrix
+# use same matrix as created earlier for MapBiomas
+mapbiomas_2015_reclass <- classify(mapbiomas_2015_cropped, reclass_m)
+
+# use if you want to assign all 0 pixels to no data value:
+#mapbiomas_reclass[mapbiomas_reclass == 0] <- NA
+
+# save intermediate raster to save on computing time in future
+writeRaster(mapbiomas_2015_reclass, "data/mapbiomas_brasil_2015_cropland.tif")
+```
+
