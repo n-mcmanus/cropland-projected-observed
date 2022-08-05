@@ -2,10 +2,17 @@
 title: "Brazil Cropland"
 author: "Nick McManus"
 date: '2022-07-28'
-output: html_document
+output: 
+ html_document: 
+    toc: yes
+    toc_float: yes
+    theme: cerulean
+    code_folding: hide
+    smooth_scroll: yes
+    collapsed: yes
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=TRUE, message = FALSE, warning = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(sf)  #polygons
 library(raster) #raster package
@@ -30,8 +37,8 @@ brazil <- ne_countries(
   dplyr::select(sovereignt)
 
 # plot to check
-#ggplot() +
-#  geom_sf(data = brazil)
+ggplot() +
+  geom_sf(data = brazil)
 ```
 
 
@@ -58,18 +65,12 @@ chen_ssp1_2020_brazil <- chen_ssp1_2020_global %>%
   terra::project(y = crs(brazil))
 
 # reclassify to isolate just cropland from the raster
-# `chen_crop_ssp1_2020_brazil` will be used for mapping/visualization
+# values assigned 0 and 10 for later visualization and calculations
 chen_crop_ssp1_2020_brazil <- chen_ssp1_2020_brazil
 chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil != 18] <- 0 # if value isn't 18, make 0
 chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil == 18] <- 10 # if value is 18, make 10
 
-# this reclassification will be used for creating a confusion matrix
-# values need to match mapbiomas
-chen_crop_ssp1_2020_brazil_cm <- chen_ssp1_2020_brazil
-chen_crop_ssp1_2020_brazil_cm[chen_crop_ssp1_2020_brazil_cm != 18] <- 0 # if value isn't 18, make 0
-chen_crop_ssp1_2020_brazil_cm[chen_crop_ssp1_2020_brazil_cm == 18] <- 1 # if value is 18, make 1
-
-#plot(chen_crop_ssp1_2020_brazil)
+plot(chen_crop_ssp1_2020_brazil)
 ```
  
 
@@ -90,7 +91,6 @@ cao_ssp1_2020_global <- rast("data/cao/globalCropland_2020CE_SSP1_RCP26.tif")
 ## Observed Cropland
 
 For observed cropland in Brazil, we will use data from MapBiomas (Collection 6), which uses Landsat mosaics to classify LULC at 30m resolution. (More information and GeoTiff source found at: https://mapbiomas.org/en/colecoes-mapbiomas-1?cama_set_language=en)
-Cropland data for analysis will be defined as "Agriculture" from the MapBiomas classification, which includes temporary and perennial crops but omits pasture and mosaic agriculture.
 
 ```{r, eval=FALSE}
 # WARNING: below analysis (aggregate step) will take a long time to run!
@@ -99,41 +99,41 @@ Cropland data for analysis will be defined as "Agriculture" from the MapBiomas c
 
 
 # read in GeoTiff
-mapbiomas_2020 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2020.tif")
+mapbio_2020 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2020.tif")
 
 # change resolution from 30m to roughly 1km
 # to figure out factor that gets res closest to target raster (Chen), use this:
-    factor <- ceiling(res(chen_crop_ssp1_2020_brazil)[1]/res(mapbiomas_2020)[1])
+    factor <- ceiling(res(chen_crop_ssp1_2020_brazil)[1]/res(mapbio_2020)[1])
     factor
 
 # now change resolution using terra:aggregate()
-mapbiomas_2020_agg <- aggregate(mapbiomas_2020,   #raster 
+mapbio_2020_agg <- aggregate(mapbio_2020,   #raster 
                             fact = 34,            #agg factor (positive int)
                             fun = "modal",        #categorical values in raster
                             na.rm = TRUE)         #don't drop entire aggregation bc of one NA
 
 # resample lower res mapbiomas using Chen data to ensure same resolution (fine-tuning the res)
-mapbiomas_2020_resamp <- resample(mapbiomas_2020_agg, chen_crop_ssp1_2020_brazil, method = "near")
+mapbio_2020_resamp <- resample(mapbio_2020_agg, chen_crop_ssp1_2020_brazil, method = "near")
 
 # because crs of mapbiomas and chen rasters are different, repeat process of
 # transforming brazil for purposes of cropping and masking
 brazil_trans2 <- brazil %>% 
-  st_transform(crs = crs(mapbiomas_2020_resamp)) %>% 
+  st_transform(crs = crs(mapbio_2020_resamp)) %>% 
   vect() 
 
 # crop and mask mapbiomas layer to ROI
-mapbiomas_2020_cropped <- mapbiomas_2020_resamp %>% 
+mapbio_2020_cropped <- mapbio_2020_resamp %>% 
   crop(brazil_trans2, mask = TRUE)
 
 # save intermediate raster
-#writeRaster(mapbiomas_2020_cropped, "data/mapbiomas/mapbiomas_2020_cropped.tif")
+#writeRaster(mapbio_2020_cropped, "data/mapbiomas/mapbiomas_2020_cropped.tif")
 ```
 
 
-Now that Mapbiomas data has been aggregated, resampled, and cropped, it's time to reclassify the raster to select for LULC categories of interest. For `mapbiomas_crop_2020`, we want to only include annual and perennial crops. Later on, we want to see how including the mosaic agriculture and pasture land classification affects the (agreement) between Chen and Mapbiomas datasets. This requires creating `mapbiomas_crop_2020_mosaic`, a separate classification that includes mosaic agriculture.
+Now that Mapbiomas data has been aggregated, resampled, and cropped, it's time to reclassify the raster to select for LULC categories of interest. Cropland data for analysis will be defined as "agriculture" from the MapBiomas classification, which includes temporary and perennial crops but omits pasture and mosaic agriculture. Later on, we want to see how including the mosaic agriculture and pasture land classification affects the (agreement) between Chen and Mapbiomas datasets. This requires creating `mapbio_crop_2020_mosaic`, a separate classification that includes mosaic agriculture.
 ```{r}
 # if above code chunk has been previously run, read in raster for analysis:
-mapbiomas_2020_cropped <- rast("data/mapbiomas/mapbiomas_2020_cropped.tif")
+mapbio_2020_cropped <- rast("data/mapbiomas/mapbiomas_2020_cropped.tif")
 
 # create reclassification matrix to combine and keep only cropland categories
 reclass_df <- c(3, 0,   #forest formation
@@ -167,10 +167,10 @@ reclass_df <- c(3, 0,   #forest formation
 reclass_m <- matrix(reclass_df, ncol = 2, byrow = TRUE)
 
 # use terra:classify() to reclassify raster values based on matrix
-mapbiomas_2020_reclass <- classify(mapbiomas_2020_cropped, reclass_m)
+mapbio_2020_reclass <- classify(mapbio_2020_cropped, reclass_m)
 
 # crs do not match, so use terra::project() to match with chen raster
-mapbiomas_crop_2020 <- project(mapbiomas_2020_reclass, crs(chen_crop_ssp1_2020_brazil), method = "near")
+mapbio_crop_2020 <- project(mapbio_2020_reclass, crs(chen_crop_ssp1_2020_brazil), method = "near")
 
 
 
@@ -204,9 +204,9 @@ reclass_df_mosaic <- c(3, 0,   #forest formation
 
 reclass_m_mosaic <- matrix(reclass_df_mosaic, ncol = 2, byrow = TRUE)
 
-mapbiomas_2020_reclass_mosaic <- classify(mapbiomas_2020_cropped, reclass_m_mosaic)
+mapbio_2020_reclass_mosaic <- classify(mapbio_2020_cropped, reclass_m_mosaic)
 
-mapbiomas_crop_2020_mosaic <- project(mapbiomas_2020_reclass_mosaic, crs(chen_crop_ssp1_2020_brazil), method = "near")
+mapbio_crop_2020_mosaic <- project(mapbio_2020_reclass_mosaic, crs(chen_crop_ssp1_2020_brazil), method = "near")
 
 ```
 
@@ -222,71 +222,23 @@ Now we will compare projects vs observed cropland within Brazil. This will be do
 
 Create confusion matrix to view sensitivity (true positive) and specificity of Chen SSP1 2020 and MapBiomas 2020 (cropland only) data.
 ```{r}
-# first convert rasters to vectors
-vals_chen <- terra::values(chen_crop_ssp1_2020_brazil_cm)
-vals_mapbio <- terra::values(mapbiomas_crop_2020)
-
-#turn vects into factors of same length
-expected_val_2020 <- factor(vals_mapbio)
-predicted_val_2020 <- factor(vals_chen)
- 
-#Creating confusion matrix
-cm_chen_mapbio_2020 <- confusionMatrix(data=predicted_val_2020, reference = expected_val_2020)
- 
-#Display results 
-cm_chen_mapbio_2020
-table(expected_val_2020, predicted_val_2020)
-```
-
-here I'm seeing if confusion matrix is more accurate by masking layers by each other and removing some NAs (it is slightly)
-```{r}
-# mask chen and mapbiomas by each other to make sure NA values are equal
-
-test <- chen_crop_ssp1_2020_brazil_cm %>% 
-  mask(mapbiomas_crop_2020)
-
-vals_test <- values(test)
-predicted_test <- factor(vals_test)
-
-cm_test <- confusionMatrix(data=predicted_test, reference = expected_val_2020, mode = "sens_spec")
-cm_test
-cm_chen_mapbio_2020
-```
-
-
-
-Visualize overlap between crop classifications of Chen and MapBiomas rasters.
-```{r}
 # add chen and mapbiomas rasters
-chen_mapbiomas_crop_2020 <- mapbiomas_crop_2020 + chen_crop_ssp1_2020_brazil
+chen_mapbio_crop_2020 <- mapbio_crop_2020 + chen_crop_ssp1_2020_brazil
 
-# plot combined layer
-plot(chen_mapbiomas_crop_2020)
-```
-
-
-Old code for reference: DELETE LATER!
-```{r}
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts <- freq(chen_mapbiomas_crop_2020)
-counts
+counts <- freq(chen_mapbio_crop_2020)
 
-# break up freq values ba
+# break up freq values by classification meaning
 nocrop <- counts[1, 3]
-crop_mapbiomas_only <- counts[2, 3]
+crop_mapbio_only <- counts[2, 3]
 crop_chen_only <- counts[3,3]
 crop_both <- counts[4,3]
 
-# determine total number of pixels with values for calculating percentages later
-total <- nocrop + crop_mapbiomas_only + crop_chen_only + crop_both
-total
 
-
-
-# break down into values for confusion matrix
+## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p <- crop_mapbiomas_only + crop_both
+p <- crop_mapbio_only + crop_both
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
 n <- nocrop + crop_chen_only
 
@@ -297,9 +249,9 @@ fp <- crop_chen_only
 # true negative
 tn <- nocrop
 # false negative
-fn <- crop_mapbiomas_only
+fn <- crop_mapbio_only
 
-#percentages:
+## percentages/rates:
 # sensitivity (true positive rate)
 tpr <- tp/p
 # specificity (true negative rate)
@@ -311,66 +263,59 @@ fnr <- fn/p
 
 #accuracy 
 acc <- (tp + tn)/(p+n)
+#precision (positive predictive value)
+ppv <- tp/(tp + fp)
 
+cm_2020 <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
+colnames(cm_2020) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_2020) <- c("Observed Pos", "Observed Neg")
 
-conf_matrix <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
-colnames(conf_matrix) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix) <- c("Observed Positive", "Observed Negative")
-conf_matrix
+# cm of rates
+cm_2020_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
+colnames(cm_2020_perc) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_2020_perc) <- c("Observed Pos", "Observed Neg")
 
-conf_matrix_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
-colnames(conf_matrix_perc) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_perc) <- c("Observed Positive", "Observed Negative")
-conf_matrix_perc
+cm_2020
+cm_2020_perc
+acc
+ppv
 
 ```
+can I do a `r cm_2020`
 
+
+Visualize overlap between crop classifications of Chen and MapBiomas rasters.
+```{r}
+# plot combined layer
+plot(chen_mapbio_crop_2020, col = c("red", "yellow", "slateblue", "black"))
+
+# add legend! convert to vect and sf then put in ggplot?
+```
+
+                                  
 
 #### Cropland + Mosaic ag
 
 Check how overlap and confusion matrix change if mosaic ag and pasture is included into MapBiomas 2020 data
 ```{r}
-# reusing same chen data, so only need to redo for mapbiomas
-# convert raster to vector
-vals_mapbio_mosaic <- terra::values(mapbiomas_crop_2020_mosaic)
-
-#turn vects into factors of same length
-expected_val_2020_mosaic <- factor(vals_mapbio_mosaic)
- 
-#Create confusion matrix
-cm_chen_mapbio_2020_mosaic <- confusionMatrix(data=predicted_val_2020, reference = expected_val_2020_mosaic)
- 
-#Display results 
-cm_chen_mapbio_2020_mosaic
-table(expected_val_2020, predicted_val_2020_mosaic)
-```
-
-
-```{r}
 # add chen and mapbiomas rasters 
-chen_mapbiomas_mosaic_crop_2020 <- mapbiomas_crop_2020_mosaic + chen_crop_ssp1_2020_brazil
-plot(chen_mapbiomas_mosaic_crop_2020)
+chen_mapbio_crop_2020_mosaic <- mapbio_crop_2020_mosaic + chen_crop_ssp1_2020_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts <- freq(chen_mapbiomas_mosaic_crop_2020)
+counts <- freq(chen_mapbio_crop_2020_mosaic)
 counts
 
 # break up freq values ba
 nocrop <- counts[1, 3]
-crop_mapbiomas_only <- counts[2, 3]
+crop_mapbio_only <- counts[2, 3]
 crop_chen_only <- counts[3,3]
 crop_both <- counts[4,3]
 
-# determine total number of pixels with values for calculating percentages later
-total <- nocrop + crop_mapbiomas_only + crop_chen_only + crop_both
-total
 
-
-
-# break down into values for confusion matrix
+## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p <- crop_mapbiomas_only + crop_both
+p <- crop_mapbio_only + crop_both
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
 n <- nocrop + crop_chen_only
 
@@ -381,9 +326,9 @@ fp <- crop_chen_only
 # true negative
 tn <- nocrop
 # false negative
-fn <- crop_mapbiomas_only
+fn <- crop_mapbio_only
 
-#percentages:
+## percentages:
 # sensitivity (true positive rate)
 tpr <- tp/p
 # specificity (true negative rate)
@@ -393,18 +338,30 @@ fpr <- fp/n
 # false negative rate
 fnr <- fn/p
 
+#accuracy 
+acc <- (tp + tn)/(p+n)
+#precision (positive predictive value)
+ppv <- tp/(tp + fp)
 
-conf_matrix <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
-colnames(conf_matrix) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix) <- c("Observed Positive", "Observed Negative")
-conf_matrix
 
-conf_matrix_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
-colnames(conf_matrix_perc) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_perc) <- c("Observed Positive", "Observed Negative")
-conf_matrix_perc
+cm_2020_mosaic <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
+colnames(cm_2020_mosaic) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2020_mosaic) <- c("Observed Positive", "Observed Negative")
+cm_2020_mosaic
+
+cm_2020_mosaic_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
+colnames(cm_2020_mosaic_perc) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2020_mosaic_perc) <- c("Observed Positive", "Observed Negative")
+cm_2020_mosaic_perc
+
+acc
+ppv
 ```
 
+```{r}
+# plot combined layer
+plot(chen_mapbio_crop_2020_mosaic, col = c("red", "yellow", "slateblue", "black"))
+```
 
 
 ### Cao vs. Mapbiomas
@@ -412,15 +369,16 @@ conf_matrix_perc
 
 
 
-## Checking baseline
+## Checking "baseline" datasets
 
-Checking the sensitivity and specificity of Chen vs Mapbiomas for 2015, both considered "observed" models.
+Checking the sensitivity and specificity of Chen 2015 and Mapbiomas 2015, both considered "observed" models. This requires reading in and repeating several previous steps for new raster layer. Then we will create the confusion matrices and visualize the results. 
+
+### Read in data
 
 First read in, crop, mask, and reclassify 2015 Chen raster
 ```{r}
 # read in GeoTiff for 2015 Chen
 chen_2015_global <- rast("data/chen/global_PFT_2015.tif")
-
 
 # crop and mask chen data to brazil_trans vector, then project back to our desired crs
 chen_2015_brazil <- chen_2015_global %>% 
@@ -437,28 +395,28 @@ chen_crop_2015_brazil[chen_crop_2015_brazil == 18] <- 10 # if value is 18, make 
 ```
 
 Next read in, crop, mask, and reclassify 2015 MapBiomas raster
-```{r}
-# WARNING: below analysis (aggregate step) will take a long time to run!
-# Once run, the last line of code in this chunk will save the intermediate raster locally.
-# If this has been already run once, skip running this chunk and move on to next
+```{r, eval=FALSE}
+## WARNING: below analysis (aggregate step) will take a long time to run!
+## Once run, the last line of code in this chunk will save the intermediate raster locally.
+## If this has been already run once, skip running this chunk and move on to next
 
 
 # read in GeoTiff
-mapbiomas_2015 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2015.tif")
+mapbio_2015 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2015.tif")
 
 # change resolution from 30m to roughly 1km
 # to figure out factor that gets res closest to target raster (Chen), use this:
-    factor <- ceiling(res(chen_crop_2015_brazil)[1]/res(mapbiomas_2015)[1])
+    factor <- ceiling(res(chen_crop_2015_brazil)[1]/res(mapbio_2015)[1])
     factor
 
 # now change resolution using terra:aggregate()
-mapbiomas_2015_agg <- aggregate(mapbiomas_2015,   #raster 
-                            fact = 34,            #agg factor (positive int)
-                            fun = "modal",        #categorical values in raster
-                            na.rm = TRUE)         #don't drop entire aggregation bc of one NA
+mapbio_2015_agg <- aggregate(mapbio_2015,   #raster 
+                             fact = 34,            #agg factor (positive int)
+                             fun = "modal",        #categorical values in raster
+                             na.rm = TRUE)         #don't drop entire aggregation bc of one NA
 
 # resample lower res mapbiomas using Chen data to ensure same resolution (fine-tuning the res)
-mapbiomas_2015_resamp <- resample(mapbiomas_2015_agg, chen_crop_2015_brazil, method = "near")
+mapbio_2015_resamp <- resample(mapbio_2015_agg, chen_crop_2015_brazil, method = "near")
 
 # because crs of mapbiomas and chen rasters are different, repeat process of
 # transforming brazil for purposes of cropping and masking
@@ -467,60 +425,53 @@ brazil_trans2 <- brazil %>%
   vect() 
 
 # crop and mask mapbiomas layer to ROI
-mapbiomas_2015_cropped <- mapbiomas_2015_resamp %>% 
+mapbio_2015_cropped <- mapbio_2015_resamp %>% 
   crop(brazil_trans2, mask = TRUE)
 
 # save intermediate raster
-writeRaster(mapbiomas_2015_cropped, "data/mapbiomas/mapbiomas_2015_cropped.tif")
+#writeRaster(mapbio_2015_cropped, "data/mapbiomas/mapbiomas_2015_cropped.tif")
 
 ```
 
-Reclassify both excluding and including mosaic cropland and pasture:
 ```{r}
 # read in raster if previous chunk has already been run:
-mapbiomas_2015_cropped <- rast("data/mapbiomas/mapbiomas_2015_cropped.tif")
+mapbio_2015_cropped <- rast("data/mapbiomas/mapbiomas_2015_cropped.tif")
 
-# use terra:classify() to reclassify raster values based on matrix
-# first use matrix excluding mosaic cropland
-mapbiomas_2015_reclass <- classify(mapbiomas_2015_cropped, reclass_m)
+# use previously created matrix for cropland onlyd
+mapbio_2015_reclass <- classify(mapbio_2015_cropped, reclass_m)
 # use terra::project() to match with chen raster
-mapbiomas_crop_2015 <- project(mapbiomas_2015_reclass, crs(chen_crop_2015_brazil), method = "near")
+mapbio_crop_2015 <- project(mapbio_2015_reclass, crs(chen_crop_2015_brazil), method = "near")
 
 
 # now use matrix including mosaic cropland
-mapbiomas_2015_reclass_mosaic <- classify(mapbiomas_2015_cropped, reclass_m_mosaic)
+mapbio_2015_reclass_mosaic <- classify(mapbio_2015_cropped, reclass_m_mosaic)
 # project to chen raster
-mapbiomas_crop_2015_mosaic <- project(mapbiomas_2015_reclass_mosaic, crs(chen_crop_2015_brazil), method = "near")
+mapbio_crop_2015_mosaic <- project(mapbio_2015_reclass_mosaic, crs(chen_crop_2015_brazil), method = "near")
 ```
 
 
+### Confusion matrices for 2015 datasets {.tabset}
 
-Now calculate confusion matrix for 2015 datasets
+#### Only cropland
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbiomas_crop_2015 <- mapbiomas_crop_2015 + chen_crop_2015_brazil
-plot(chen_mapbiomas_crop_2015)
+chen_mapbio_crop_2015 <- mapbio_crop_2015 + chen_crop_2015_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts2015 <- freq(chen_mapbiomas_crop_2015)
+counts2015 <- freq(chen_mapbio_crop_2015)
 counts2015
 
 # break up freq values ba
 nocrop_2015 <- counts2015[1, 3]
-crop_mapbiomas_only_2015 <- counts2015[2, 3]
+crop_mapbio_only_2015 <- counts2015[2, 3]
 crop_chen_only_2015 <- counts2015[3,3]
 crop_both_2015 <- counts2015[4,3]
 
-# determine total number of pixels with values for calculating percentages later
-total_2015 <- nocrop_2015 + crop_mapbiomas_only_2015 + crop_chen_only_2015 + crop_both_2015
-total_2015
 
-
-
-# break down into values for confusion matrix
+## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p2 <- crop_mapbiomas_only_2015 + crop_both_2015
+p2 <- crop_mapbio_only_2015 + crop_both_2015
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
 n2 <- nocrop_2015 + crop_chen_only_2015
 
@@ -531,9 +482,9 @@ fp2 <- crop_chen_only_2015
 # true negative
 tn2 <- nocrop_2015
 # false negative
-fn2 <- crop_mapbiomas_only_2015
+fn2 <- crop_mapbio_only_2015
 
-#percentages:
+## percentages/rates:
 # sensitivity (true positive rate)
 tpr2 <- tp2/p2
 # specificity (true negative rate)
@@ -543,45 +494,51 @@ fpr2 <- fp2/n2
 # false negative rate
 fnr2 <- fn2/p2
 
+#accuracy 
+acc2 <- (tp2 + tn2)/(p2+n2)
+#precision (positive predictive value)
+ppv2 <- tp2/(tp2 + fp2)
 
-conf_matrix_2015 <- matrix(c(tp2, fn2, fp2, tn2), ncol=2, byrow=TRUE)
-colnames(conf_matrix_2015) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_2015) <- c("Observed Positive", "Observed Negative")
-conf_matrix_2015
 
-conf_matrix_perc_2015 <- matrix(c(tpr2, fnr2, fpr2, tnr2), ncol=2, byrow=TRUE)
-colnames(conf_matrix_perc_2015) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_perc_2015) <- c("Observed Positive", "Observed Negative")
-conf_matrix_perc_2015
+cm_2015 <- matrix(c(tp2, fn2, fp2, tn2), ncol=2, byrow=TRUE)
+colnames(cm_2015) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2015) <- c("Observed Positive", "Observed Negative")
+cm_2015
+
+cm_2015_perc <- matrix(c(tpr2, fnr2, fpr2, tnr2), ncol=2, byrow=TRUE)
+colnames(cm_2015_perc) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2015_perc) <- c("Observed Positive", "Observed Negative")
+cm_2015_perc
+
+acc2
+ppv2
+```
+```{r}
+# plot combined layer
+plot(chen_mapbio_crop_2015, col = c("red", "yellow", "slateblue", "black"))
 ```
 
 
-Compare against mosaic ag
+
+#### Cropland + Mosaic ag
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbiomas_mosaic_crop_2015 <- mapbiomas_crop_2015_mosaic + chen_crop_2015_brazil
-plot(chen_mapbiomas_mosaic_crop_2015)
+chen_mapbio_crop_2015_mosaic <- mapbio_crop_2015_mosaic + chen_crop_2015_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts2015 <- freq(chen_mapbiomas_mosaic_crop_2015)
+counts2015 <- freq(chen_mapbio_crop_2015_mosaic)
 counts2015
 
 # break up freq values ba
 nocrop_2015 <- counts2015[1, 3]
-crop_mapbiomas_only_2015 <- counts2015[2, 3]
+crop_mapbio_only_2015 <- counts2015[2, 3]
 crop_chen_only_2015 <- counts2015[3,3]
 crop_both_2015 <- counts2015[4,3]
 
-# determine total number of pixels with values for calculating percentages later
-total_2015 <- nocrop_2015 + crop_mapbiomas_only_2015 + crop_chen_only_2015 + crop_both_2015
-total_2015
-
-
-
-# break down into values for confusion matrix
+## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p2 <- crop_mapbiomas_only_2015 + crop_both_2015
+p2 <- crop_mapbio_only_2015 + crop_both_2015
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
 n2 <- nocrop_2015 + crop_chen_only_2015
 
@@ -592,9 +549,9 @@ fp2 <- crop_chen_only_2015
 # true negative
 tn2 <- nocrop_2015
 # false negative
-fn2 <- crop_mapbiomas_only_2015
+fn2 <- crop_mapbio_only_2015
 
-#percentages:
+## percentages/rates:
 # sensitivity (true positive rate)
 tpr2 <- tp2/p2
 # specificity (true negative rate)
@@ -604,16 +561,29 @@ fpr2 <- fp2/n2
 # false negative rate
 fnr2 <- fn2/p2
 
+#accuracy 
+acc2 <- (tp2 + tn2)/(p2+n2)
+#precision (positive predictive value)
+ppv2 <- tp2/(tp2 + fp2)
 
-conf_matrix_2015 <- matrix(c(tp2, fn2, fp2, tn2), ncol=2, byrow=TRUE)
-colnames(conf_matrix_2015) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_2015) <- c("Observed Positive", "Observed Negative")
-conf_matrix_2015
 
-conf_matrix_perc_2015 <- matrix(c(tpr2, fnr2, fpr2, tnr2), ncol=2, byrow=TRUE)
-colnames(conf_matrix_perc_2015) <- c("Predicted Positive", "Predicted Negative")
-rownames(conf_matrix_perc_2015) <- c("Observed Positive", "Observed Negative")
-conf_matrix_perc_2015
+cm_2015_mosaic <- matrix(c(tp2, fn2, fp2, tn2), ncol=2, byrow=TRUE)
+colnames(cm_2015_mosaic) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2015_mosaic) <- c("Observed Positive", "Observed Negative")
+cm_2015_mosaic
+
+cm_2015_mosaic_perc <- matrix(c(tpr2, fnr2, fpr2, tnr2), ncol=2, byrow=TRUE)
+colnames(cm_2015_mosaic_perc) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2015_mosaic_perc) <- c("Observed Positive", "Observed Negative")
+cm_2015_mosaic_perc
+
+acc2
+ppv2
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_crop_2015_mosaic, col = c("red", "yellow", "slateblue", "black"))
 ```
 
 
