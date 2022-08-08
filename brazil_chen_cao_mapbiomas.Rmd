@@ -586,4 +586,42 @@ ppv2
 plot(chen_mapbio_crop_2015_mosaic, col = c("red", "yellow", "slateblue", "black"))
 ```
 
+## To greener pastures?
+Quick check to see how much of the land classified as cropland is classified as pasture by Mapbiomas. Quick visual inspection in QGIS reveals that the majority seems to be pasture
+```{r}
+# code to turn all 0s in chen reclassified to NAs
+# then mask mapbio by chen to remove all values in mapbio that aren't Chen cropland for 2020
+# return values for mapbio and see the frequency of pasture
+chen_crop_ssp1_2020_brazil_na <- chen_crop_ssp1_2020_brazil
+chen_crop_ssp1_2020_brazil_na[chen_crop_ssp1_2020_brazil_na == 0] <- NA
+
+plot(chen_crop_ssp1_2020_brazil_na)
+
+
+# mask
+mapbio_2020_cropped_masked <- mapbio_2020_cropped %>% 
+  mask(chen_crop_ssp1_2020_brazil_na)
+
+# reclassify to remove values for cropland in mapbiomas
+df_nocrop <- c (39, 0,  #soybean
+                20, 0,  #sugar cane
+                40, 0,  #rice
+                41, 0,  #other temp crops
+                46, 0,  #coffee
+                47, 0,  #citrus
+                48, 0)  #other perennial crops
+
+# reshape df into matrix with columns and rows
+mapbio_m <- matrix(df_nocrop, ncol = 2, byrow = TRUE)
+
+# use terra:classify() to reclassify raster values based on matrix
+mapbio_2020_cropped_masked_reclass <- classify(mapbio_2020_cropped_masked, mapbio_m)
+
+plot(mapbio_2020_cropped_masked_reclass)
+
+freq(mapbio_2020_cropped_masked_reclass)
+
+
+```
+Yes, looks like the majority of mis-matched pixels are classified as either "pasture" (15) or "mosaic agriculture and pasture" (21) by Mapbiomas
 
