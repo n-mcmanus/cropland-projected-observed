@@ -586,23 +586,20 @@ ppv2
 plot(chen_mapbio_crop_2015_mosaic, col = c("red", "yellow", "slateblue", "black"))
 ```
 
-## To greener pastures?
-Quick check to see how much of the land classified as cropland is classified as pasture by Mapbiomas. Quick visual inspection in QGIS reveals that the majority seems to be pasture
+## On to greener pastures?
+After exploring how MapBiomas' mosaic agriculture and pasture land classification affect the confusion matrix between MapBiomas and Chen, we know want to explore how MapBiomas' pasture classification affects the confusion matrix. 
+
+First, we want to run a quick check to see how much of the land classified as cropland my Chen is classified as pasture by MapBiomas. Quick visual inspection in QGIS reveals that the majority seems to be pasture, but we can quantify this below:
 ```{r}
-# code to turn all 0s in chen reclassified to NAs
-# then mask mapbio by chen to remove all values in mapbio that aren't Chen cropland for 2020
-# return values for mapbio and see the frequency of pasture
+# code to reclassify all 0 values in chen (non cropland) to NAs
 chen_crop_ssp1_2020_brazil_na <- chen_crop_ssp1_2020_brazil
 chen_crop_ssp1_2020_brazil_na[chen_crop_ssp1_2020_brazil_na == 0] <- NA
 
-plot(chen_crop_ssp1_2020_brazil_na)
-
-
-# mask
+# then mask mapbio by chen to remove all values in mapbio that aren't Chen cropland for 2020
 mapbio_2020_cropped_masked <- mapbio_2020_cropped %>% 
   mask(chen_crop_ssp1_2020_brazil_na)
 
-# reclassify to remove values for cropland in mapbiomas
+# reclassify mapbio to remove values for cropland in mapbiomas
 df_nocrop <- c (39, 0,  #soybean
                 20, 0,  #sugar cane
                 40, 0,  #rice
@@ -620,8 +617,103 @@ mapbio_2020_cropped_masked_reclass <- classify(mapbio_2020_cropped_masked, mapbi
 plot(mapbio_2020_cropped_masked_reclass)
 
 freq(mapbio_2020_cropped_masked_reclass)
-
-
 ```
-Yes, looks like the majority of mis-matched pixels are classified as either "pasture" (15) or "mosaic agriculture and pasture" (21) by Mapbiomas
+Yes, the majority of mis-matched pixels are classified as either "pasture" (15) or "mosaic agriculture and pasture" (21) by Mapbiomas
+
+Now we want to re-run the confusion matrices to see how the results are affected by including pasture into the crop classification for MapBiomas
+```{r}
+# include ag mosaic in new reclassification
+reclass_df_pasture <- c(3, 0,   #forest formation
+                4, 0,   #savanna formation
+                5, 0,   #mangrove
+                49, 0,  #wooded restinga
+                11, 0,  #wetlands
+                12, 0,  #grassland
+                32, 0,  #salt flat
+                29, 0,  #rocky outcrop
+                13, 0,  #other nonforest formations
+                15, 1,  #pasture
+                9, 0,   #forest plantation
+                21, 1,  #mosaic ag and pasture
+                23, 0,  #beach, dune, and sand spot
+                24, 0,  #urban area
+                30, 0,  #mining
+                25, 0,  #other non vegetated areas
+                33, 0,  # river, lake, ocean
+                31, 0,  #aquaculture
+                27, 0,  #non observed
+                39, 1,  #soybean
+                20, 1,  #sugar cane
+                40, 1,  #rice
+                41, 1,  #other temp crops
+                46, 1,  #coffee
+                47, 1,  #citrus
+                48, 1)  #other perennial crops
+
+reclass_m_pasture <- matrix(reclass_df_pasture, ncol = 2, byrow = TRUE)
+
+mapbio_2020_reclass_pasture <- classify(mapbio_2020_cropped, reclass_m_mosaic)
+
+mapbio_crop_2020_pasture <- project(mapbio_2020_reclass_pasture, crs(chen_crop_ssp1_2020_brazil), method = "near")
+```
+
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_crop_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts2020p <- freq(chen_mapbio_crop_2020_pasture)
+counts2020p
+
+# break up freq values ba
+nocrop_2020p <- counts2020p[1, 3]
+crop_mapbio_only_2020p <- counts2020p[2, 3]
+crop_chen_only_2020p <- counts2020p[3,3]
+crop_both_2020p <- counts2020p[4,3]
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p <- crop_mapbio_only_2020p + crop_both_2020p
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n <- nocrop_2020p + crop_chen_only_2020p
+
+# true positive
+tp <- crop_both_2020p
+# false positive
+fp <- crop_chen_only_2020p
+# true negative
+tn <- nocrop_2020p
+# false negative
+fn <- crop_mapbio_only_2020p
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr <- tp/p
+# specificity (true negative rate)
+tnr <- tn/n
+# false positive rate
+fpr <- fp/n
+# false negative rate
+fnr <- fn/p
+
+#accuracy 
+acc <- (tp + tn)/(p+n)
+#precision (positive predictive value)
+ppv <- tp/(tp + fp)
+
+
+cm_2020_pasture <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
+colnames(cm_2020_pasture) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2020_pasture) <- c("Observed Positive", "Observed Negative")
+cm_2020_pasture
+
+cm_2020_pasture_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
+colnames(cm_2020_pasture_perc) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_2020_pasture_perc) <- c("Observed Positive", "Observed Negative")
+cm_2020_pasture_perc
+
+acc
+ppv
+```
 
