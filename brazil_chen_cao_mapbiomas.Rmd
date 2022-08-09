@@ -18,7 +18,7 @@ library(sf)  #polygons
 library(raster) #raster package
 library(terra)  #newer/faster/better raster package
 library(rnaturalearth)  #administrative boundaries data
-library(exactextractr)  #extracting what's underneath polys, points
+library(exactextractr)  #zonal stats
 library(kableExtra) #tables
 library(tidyverse) #always
 library(caret) # for confusion matrix
@@ -99,7 +99,7 @@ For observed cropland in Brazil, we will use data from MapBiomas (Collection 6),
 
 
 # read in GeoTiff
-mapbio_2020 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2020.tif")
+mapbio_2020 <- rast("data/mapbiomas/brasil_coverage_2020.tif")
 
 # change resolution from 30m to roughly 1km
 # to figure out factor that gets res closest to target raster (Chen), use this:
@@ -402,7 +402,7 @@ Next read in, crop, mask, and reclassify 2015 MapBiomas raster
 
 
 # read in GeoTiff
-mapbio_2015 <- rast("data/mapbiomas/mapbiomas_brasil_coverage_2015.tif")
+mapbio_2015 <- rast("data/mapbiomas/brasil_coverage_2015.tif")
 
 # change resolution from 30m to roughly 1km
 # to figure out factor that gets res closest to target raster (Chen), use this:
@@ -421,7 +421,7 @@ mapbio_2015_resamp <- resample(mapbio_2015_agg, chen_crop_2015_brazil, method = 
 # because crs of mapbiomas and chen rasters are different, repeat process of
 # transforming brazil for purposes of cropping and masking
 brazil_trans2 <- brazil %>% 
-  st_transform(crs = crs(mapbiomas_2015_resamp)) %>% 
+  st_transform(crs = crs(mapbio_2015_resamp)) %>% 
   vect() 
 
 # crop and mask mapbiomas layer to ROI
@@ -614,10 +614,9 @@ mapbio_m <- matrix(df_nocrop, ncol = 2, byrow = TRUE)
 # use terra:classify() to reclassify raster values based on matrix
 mapbio_2020_cropped_masked_reclass <- classify(mapbio_2020_cropped_masked, mapbio_m)
 
-plot(mapbio_2020_cropped_masked_reclass)
-
 freq(mapbio_2020_cropped_masked_reclass)
 ```
+
 Yes, the majority of mis-matched pixels are classified as either "pasture" (15) or "mosaic agriculture and pasture" (21) by Mapbiomas
 
 Now we want to re-run the confusion matrices to see how the results are affected by including pasture into the crop classification for MapBiomas
@@ -634,7 +633,7 @@ reclass_df_pasture <- c(3, 0,   #forest formation
                 13, 0,  #other nonforest formations
                 15, 1,  #pasture
                 9, 0,   #forest plantation
-                21, 1,  #mosaic ag and pasture
+                21, 0,  #mosaic ag and pasture
                 23, 0,  #beach, dune, and sand spot
                 24, 0,  #urban area
                 30, 0,  #mining
@@ -652,14 +651,14 @@ reclass_df_pasture <- c(3, 0,   #forest formation
 
 reclass_m_pasture <- matrix(reclass_df_pasture, ncol = 2, byrow = TRUE)
 
-mapbio_2020_reclass_pasture <- classify(mapbio_2020_cropped, reclass_m_mosaic)
+mapbio_2020_reclass_pasture <- classify(mapbio_2020_cropped, reclass_m_pasture)
 
 mapbio_crop_2020_pasture <- project(mapbio_2020_reclass_pasture, crs(chen_crop_ssp1_2020_brazil), method = "near")
 ```
 
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbio_crop_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_2020_brazil
+chen_mapbio_crop_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_ssp1_2020_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
 counts2020p <- freq(chen_mapbio_crop_2020_pasture)
@@ -715,5 +714,10 @@ cm_2020_pasture_perc
 
 acc
 ppv
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_crop_2020_pasture, col = c("red", "yellow", "slateblue", "black"))
 ```
 
