@@ -42,21 +42,24 @@ ggplot() +
 ```
 
 
-## Projected Cropland {.tabset}
+## Read in Data
 
-### Chen et al., 2022
+### Projected Cropland
 First read in projected 2020 cropland from Chen et al. 2022. Then, crop and mask this global projection to just Brazil. Finally, reclassify the raster to keep only pixels representing cropland.
 
 Source: Chen, G., Li, X., & Liu, X. (2022). Global land projection based on plant functional types with a 1-km resolution under socio-climatic scenarios. Scientific Data, 9(1), 125. https://doi.org/10.1038/s41597-022-01208-6
 
 ```{r}
-# read in GeoTiff for SSP1 scenario (other scenarios will be examined later)
-chen_ssp1_2020_global <- rast("data/chen/global_PFT_SSP1_RCP26_2020.tif")
+# read in GeoTiff for different SSP scenarios (other scenarios will be examined later)
+chen_ssp1_2020_global <- rast("data/chen/global_PFT_SSP1_RCP26_2020.tif")   #SSP1
+chen_ssp3_2020_global <- rast("data/chen/global_PFT_SSP3_RCP70_2020.tif")   #SSP3
+chen_ssp5_2020_global <- rast("data/chen/global_PFT_SSP5_RCP85_2020.tif")   #SSP5
 
 # transform brazil to crop chen raster bc it's faster than re-projecting the whole global raster
 brazil_trans <- brazil %>% 
   st_transform(crs = crs(chen_ssp1_2020_global)) %>% 
   vect() # vect is more agreeable to rasts
+
 
 # crop and mask chen data to brazil_trans vector, then project back to our desired crs
 chen_ssp1_2020_brazil <- chen_ssp1_2020_global %>% 
@@ -64,31 +67,38 @@ chen_ssp1_2020_brazil <- chen_ssp1_2020_global %>%
   mask(brazil_trans) %>% 
   terra::project(y = crs(brazil))
 
+chen_ssp3_2020_brazil <- chen_ssp3_2020_global %>% 
+  crop(brazil_trans) %>% 
+  mask(brazil_trans) %>% 
+  terra::project(y = crs(brazil))
+
+chen_ssp5_2020_brazil <- chen_ssp5_2020_global %>% 
+  crop(brazil_trans) %>% 
+  mask(brazil_trans) %>% 
+  terra::project(y = crs(brazil))
+
+
 # reclassify to isolate just cropland from the raster
 # values assigned 0 and 10 for later visualization and calculations
 chen_crop_ssp1_2020_brazil <- chen_ssp1_2020_brazil
-chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil != 18] <- 0 # if value isn't 18, make 0
-chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil == 18] <- 10 # if value is 18, make 10
+  chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil != 18] <- 0 # if value isn't 18, make 0
+  chen_crop_ssp1_2020_brazil[chen_crop_ssp1_2020_brazil == 18] <- 10 # if value is 18, make 10
+
+chen_crop_ssp3_2020_brazil <- chen_ssp3_2020_brazil
+  chen_crop_ssp3_2020_brazil[chen_crop_ssp3_2020_brazil != 18] <- 0 # if value isn't 18, make 0
+  chen_crop_ssp3_2020_brazil[chen_crop_ssp3_2020_brazil == 18] <- 10 # if value is 18, make 10
+  
+chen_crop_ssp5_2020_brazil <- chen_ssp5_2020_brazil
+  chen_crop_ssp5_2020_brazil[chen_crop_ssp5_2020_brazil != 18] <- 0 # if value isn't 18, make 0
+  chen_crop_ssp5_2020_brazil[chen_crop_ssp5_2020_brazil == 18] <- 10 # if value is 18, make 10
 
 plot(chen_crop_ssp1_2020_brazil)
+plot(chen_crop_ssp3_2020_brazil)
+plot(chen_crop_ssp5_2020_brazil)
 ```
  
 
- 
-### Cao et al., 2021
-
-This is where I will read in Cao data
-
-Source: 
-```{r}
-cao_ssp1_2020_global <- rast("data/cao/globalCropland_2020CE_SSP1_RCP26.tif")
-
-
-```
-
-
-
-## Observed Cropland
+### Observed Cropland
 
 For observed cropland in Brazil, we will use data from MapBiomas (Collection 6), which uses Landsat mosaics to classify LULC at 30m resolution. (More information and GeoTiff source found at: https://mapbiomas.org/en/colecoes-mapbiomas-1?cama_set_language=en)
 
@@ -129,13 +139,12 @@ mapbio_2020_cropped <- mapbio_2020_resamp %>%
 #writeRaster(mapbio_2020_cropped, "data/mapbiomas/mapbiomas_2020_cropped.tif")
 ```
 
-
 Now that Mapbiomas data has been aggregated, resampled, and cropped, it's time to reclassify the raster to select for LULC categories of interest. Cropland data for analysis will be defined as "agriculture" from the MapBiomas classification, which includes temporary and perennial crops but omits pasture and mosaic agriculture. Later on, we want to see how including the mosaic agriculture and pasture land classification affects the (agreement) between Chen and Mapbiomas datasets. This requires creating `mapbio_crop_2020_mosaic`, a separate classification that includes mosaic agriculture.
 ```{r}
 # if above code chunk has been previously run, read in raster for analysis:
 mapbio_2020_cropped <- rast("data/mapbiomas/mapbiomas_2020_cropped.tif")
 
-# create reclassification matrix to combine and keep only cropland categories
+## create reclassification matrix to combine and keep only cropland categories
 reclass_df <- c(3, 0,   #forest formation
                 4, 0,   #savanna formation
                 5, 0,   #mangrove
@@ -174,7 +183,8 @@ mapbio_crop_2020 <- project(mapbio_2020_reclass, crs(chen_crop_ssp1_2020_brazil)
 
 
 
-# include ag mosaic in new reclassification
+
+## include ag mosaic in new reclassification
 reclass_df_mosaic <- c(3, 0,   #forest formation
                 4, 0,   #savanna formation
                 5, 0,   #mangrove
@@ -212,159 +222,435 @@ mapbio_crop_2020_mosaic <- project(mapbio_2020_reclass_mosaic, crs(chen_crop_ssp
 
 
 
-## Confusion matrix
+## Confusion matrix {.tabset}
 
 Now we will compare projects vs observed cropland within Brazil. This will be done using a confusion matrix.
 
-### Chen vs. Mapbiomas {.tabset}
+### Only cropland {.tabset}
+Create confusion matrix to view sensitivity (true positive) and specificity of Chen 2020 and MapBiomas 2020 (cropland only) data.
 
-#### Only cropland
-
-Create confusion matrix to view sensitivity (true positive) and specificity of Chen SSP1 2020 and MapBiomas 2020 (cropland only) data.
+#### SSP1
+View the results when comparing Chen SSP1 2020 vs. MapBiomas 2020
 ```{r}
 # add chen and mapbiomas rasters
-chen_mapbio_crop_2020 <- mapbio_crop_2020 + chen_crop_ssp1_2020_brazil
+chen_mapbio_ssp1_2020 <- mapbio_crop_2020 + chen_crop_ssp1_2020_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts <- freq(chen_mapbio_crop_2020)
+counts1 <- freq(chen_mapbio_ssp1_2020)
 
 # break up freq values by classification meaning
-nocrop <- counts[1, 3]
-crop_mapbio_only <- counts[2, 3]
-crop_chen_only <- counts[3,3]
-crop_both <- counts[4,3]
+nocrop_1 <- counts1[1, 3]
+crop_mapbio_only_1 <- counts1[2, 3]
+crop_chen_only_1 <- counts1[3,3]
+crop_both_1 <- counts1[4,3]
 
 
 ## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p <- crop_mapbio_only + crop_both
+p_1 <- crop_mapbio_only_1 + crop_both_1
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
-n <- nocrop + crop_chen_only
+n_1 <- nocrop_1 + crop_chen_only_1
 
 # true positive
-tp <- crop_both
+tp_1 <- crop_both_1
 # false positive
-fp <- crop_chen_only
+fp_1 <- crop_chen_only_1
 # true negative
-tn <- nocrop
+tn_1 <- nocrop_1
 # false negative
-fn <- crop_mapbio_only
+fn_1 <- crop_mapbio_only_1
 
 ## percentages/rates:
 # sensitivity (true positive rate)
-tpr <- tp/p
+tpr_1 <- tp_1/p_1
 # specificity (true negative rate)
-tnr <- tn/n
+tnr_1 <- tn_1/n_1
 # false positive rate
-fpr <- fp/n
+fpr_1 <- fp_1/n_1
 # false negative rate
-fnr <- fn/p
+fnr_1 <- fn_1/p_1
 
 #accuracy 
-acc <- (tp + tn)/(p+n)
+acc_1 <- (tp_1 + tn_1)/(p_1 + n_1)
 #precision (positive predictive value)
-ppv <- tp/(tp + fp)
+ppv_1 <- tp_1/(tp_1 + fp_1)
 
-cm_2020 <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
-colnames(cm_2020) <- c("Predicted Pos", "Predicted Neg")
-rownames(cm_2020) <- c("Observed Pos", "Observed Neg")
+cm_ssp1_2020 <- matrix(c(tp_1, fn_1, fp_1, tn_1), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp1_2020) <- c("Observed Pos", "Observed Neg")
 
 # cm of rates
-cm_2020_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
-colnames(cm_2020_perc) <- c("Predicted Pos", "Predicted Neg")
-rownames(cm_2020_perc) <- c("Observed Pos", "Observed Neg")
+cm_ssp1_2020_perc <- matrix(c(tpr_1, fnr_1, fpr_1, tnr_1), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020_perc) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp1_2020_perc) <- c("Observed Pos", "Observed Neg")
 
-cm_2020
-cm_2020_perc
-acc
-ppv
+cm_ssp1_2020
+cm_ssp1_2020_perc
+acc_1
+ppv_1
 
 ```
-can I do a `r cm_2020`
 
 
-Visualize overlap between crop classifications of Chen and MapBiomas rasters.
+Visualize overlap between crop classifications of Chen SSP1 and MapBiomas rasters.
 ```{r}
 # plot combined layer
-plot(chen_mapbio_crop_2020, col = c("red", "yellow", "slateblue", "black"))
+plot(chen_mapbio_ssp1_2020, col = c("red", "yellow", "slateblue", "black"))
 
 # add legend! convert to vect and sf then put in ggplot?
 ```
 
-                                  
+#### SSP3
 
-#### Cropland + Mosaic ag
-
-Check how overlap and confusion matrix change if mosaic ag and pasture is included into MapBiomas 2020 data
+View the results when comparing Chen SSP3 2020 vs. MapBiomas 2020
 ```{r}
-# add chen and mapbiomas rasters 
-chen_mapbio_crop_2020_mosaic <- mapbio_crop_2020_mosaic + chen_crop_ssp1_2020_brazil
+# add chen and mapbiomas rasters
+chen_mapbio_ssp3_2020 <- mapbio_crop_2020 + chen_crop_ssp3_2020_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts <- freq(chen_mapbio_crop_2020_mosaic)
-counts
+counts3 <- freq(chen_mapbio_ssp3_2020)
 
-# break up freq values ba
-nocrop <- counts[1, 3]
-crop_mapbio_only <- counts[2, 3]
-crop_chen_only <- counts[3,3]
-crop_both <- counts[4,3]
+# break up freq values by classification meaning
+nocrop_3 <- counts3[1, 3]
+crop_mapbio_only_3 <- counts3[2, 3]
+crop_chen_only_3 <- counts3[3,3]
+crop_both_3 <- counts3[4,3]
 
 
 ## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p <- crop_mapbio_only + crop_both
+p_3 <- crop_mapbio_only_3 + crop_both_3
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
-n <- nocrop + crop_chen_only
+n_3 <- nocrop_3 + crop_chen_only_3
 
 # true positive
-tp <- crop_both
+tp_3 <- crop_both_3
 # false positive
-fp <- crop_chen_only
+fp_3 <- crop_chen_only_3
 # true negative
-tn <- nocrop
+tn_3 <- nocrop_3
 # false negative
-fn <- crop_mapbio_only
+fn_3 <- crop_mapbio_only_3
 
-## percentages:
+## percentages/rates:
 # sensitivity (true positive rate)
-tpr <- tp/p
+tpr_3 <- tp_3 / p_3
 # specificity (true negative rate)
-tnr <- tn/n
+tnr_3 <- tn_3/n_3
 # false positive rate
-fpr <- fp/n
+fpr_3 <- fp_3/n_3
 # false negative rate
-fnr <- fn/p
+fnr_3 <- fn_3/p_3
 
 #accuracy 
-acc <- (tp + tn)/(p+n)
+acc_3 <- (tp_3 + tn_3)/(p_3 + n_3)
 #precision (positive predictive value)
-ppv <- tp/(tp + fp)
+ppv_3 <- tp_3/(tp_3 + fp_3)
+
+cm_ssp3_2020 <- matrix(c(tp_3, fn_3, fp_3, tn_3), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp3_2020) <- c("Observed Pos", "Observed Neg")
+
+# cm of rates
+cm_ssp3_2020_perc <- matrix(c(tpr_3, fnr_3, fpr_3, tnr_3), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020_perc) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp3_2020_perc) <- c("Observed Pos", "Observed Neg")
+
+cm_ssp3_2020
+cm_ssp3_2020_perc
+acc_3
+ppv_3
+
+```
+
+Visualize overlap between crop classifications of Chen SSP1 and MapBiomas rasters.
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp3_2020, col = c("red", "yellow", "slateblue", "black"))
+
+# add legend! convert to vect and sf then put in ggplot?
+```
+
+#### SSP5
+
+View the results when comparing Chen SSP5 2020 vs. MapBiomas 2020
+```{r}
+# add chen and mapbiomas rasters
+chen_mapbio_ssp5_2020 <- mapbio_crop_2020 + chen_crop_ssp5_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts5 <- freq(chen_mapbio_ssp5_2020)
+
+# break up freq values by classification meaning
+nocrop_5 <- counts5[1, 3]
+crop_mapbio_only_5 <- counts5[2, 3]
+crop_chen_only_5 <- counts5[3,3]
+crop_both_5 <- counts5[4,3]
 
 
-cm_2020_mosaic <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
-colnames(cm_2020_mosaic) <- c("Predicted Positive", "Predicted Negative")
-rownames(cm_2020_mosaic) <- c("Observed Positive", "Observed Negative")
-cm_2020_mosaic
+## break down into values for confusion matrix
 
-cm_2020_mosaic_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
-colnames(cm_2020_mosaic_perc) <- c("Predicted Positive", "Predicted Negative")
-rownames(cm_2020_mosaic_perc) <- c("Observed Positive", "Observed Negative")
-cm_2020_mosaic_perc
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_5 <- crop_mapbio_only_5 + crop_both_5
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_5 <- nocrop_5 + crop_chen_only_5
 
-acc
-ppv
+# true positive
+tp_5 <- crop_both_5
+# false positive
+fp_5 <- crop_chen_only_5
+# true negative
+tn_5 <- nocrop_5
+# false negative
+fn_5 <- crop_mapbio_only_5
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_5 <- tp_5 / p_5
+# specificity (true negative rate)
+tnr_5 <- tn_5/n_5
+# false positive rate
+fpr_5 <- fp_5/n_5
+# false negative rate
+fnr_5 <- fn_5/p_5
+
+#accuracy 
+acc_5 <- (tp_5 + tn_5)/(p_5 + n_5)
+#precision (positive predictive value)
+ppv_5 <- tp_3/(tp_5 + fp_5)
+
+cm_ssp5_2020 <- matrix(c(tp_5, fn_5, fp_5, tn_5), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp5_2020) <- c("Observed Pos", "Observed Neg")
+
+# cm of rates
+cm_ssp5_2020_perc <- matrix(c(tpr_3, fnr_3, fpr_3, tnr_3), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020_perc) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp5_2020_perc) <- c("Observed Pos", "Observed Neg")
+
+cm_ssp5_2020
+cm_ssp5_2020_perc
+acc_5
+ppv_5
+
+```
+
+Visualize overlap between crop classifications of Chen SSP1 and MapBiomas rasters.
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp5_2020, col = c("red", "yellow", "slateblue", "black"))
+
+# add legend! convert to vect and sf then put in ggplot?
+```
+
+
+### Cropland + Mosaic ag {.tabset}
+
+Check how overlap and confusion matrix change if mosaic ag and pasture is included into MapBiomas 2020 data
+
+#### SSP1
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_ssp1_2020_mosaic <- mapbio_crop_2020_mosaic + chen_crop_ssp1_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts_1m <- freq(chen_mapbio_ssp1_2020_mosaic)
+counts_1m
+
+# break up freq values ba
+nocrop_1m <- counts_1m[1, 3]
+crop_mapbio_only_1m <- counts_1m[2, 3]
+crop_chen_only_1m <- counts_1m[3,3]
+crop_both_1m <- counts_1m[4,3]
+
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_1m <- crop_mapbio_only_1m + crop_both_1m
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_1m <- nocrop_1m + crop_chen_only_1m
+
+# true positive
+tp_1m <- crop_both_1m
+# false positive
+fp_1m <- crop_chen_only_1m
+# true negative
+tn_1m <- nocrop_1m
+# false negative
+fn_1m <- crop_mapbio_only_1m
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_1m <- tp_1m/p_1m
+# specificity (true negative rate)
+tnr_1m <- tn_1m/n_1m
+# false positive rate
+fpr_1m <- fp_1m/n_1m
+# false negative rate
+fnr_1m <- fn_1m/p_1m
+
+#accuracy 
+acc_1m <- (tp_1m + tn_1m)/(p_1m + n_1m)
+#precision (positive predictive value)
+ppv_1m <- tp_1m/(tp_1m + fp_1m)
+
+cm_ssp1_2020_m <- matrix(c(tp_1m, fn_1m, fp_1m, tn_1m), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp1_2020_m) <- c("Observed Pos", "Observed Neg")
+
+# cm of rates
+cm_ssp1_2020_perc_m <- matrix(c(tpr_1m, fnr_1m, fpr_1m, tnr_1m), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020_perc_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp1_2020_perc_m) <- c("Observed Pos", "Observed Neg")
+
+cm_ssp1_2020_m
+cm_ssp1_2020_perc_m
+acc_1m
+ppv_1m
 ```
 
 ```{r}
 # plot combined layer
-plot(chen_mapbio_crop_2020_mosaic, col = c("red", "yellow", "slateblue", "black"))
+plot(chen_mapbio_ssp1_2020_mosaic, col = c("red", "yellow", "slateblue", "black"))
 ```
 
+#### SSP3
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_ssp3_2020_mosaic <- mapbio_crop_2020_mosaic + chen_crop_ssp3_2020_brazil
 
-### Cao vs. Mapbiomas
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts_3m <- freq(chen_mapbio_ssp3_2020_mosaic)
+counts_3m
+
+# break up freq values ba
+nocrop_3m <- counts_3m[1, 3]
+crop_mapbio_only_3m <- counts_3m[2, 3]
+crop_chen_only_3m <- counts_3m[3,3]
+crop_both_3m <- counts_3m[4,3]
+
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_3m <- crop_mapbio_only_3m + crop_both_3m
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_3m <- nocrop_3m + crop_chen_only_3m
+
+# true positive
+tp_3m <- crop_both_3m
+# false positive
+fp_3m <- crop_chen_only_3m
+# true negative
+tn_3m <- nocrop_3m
+# false negative
+fn_3m <- crop_mapbio_only_3m
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_3m <- tp_3m/p_3m
+# specificity (true negative rate)
+tnr_3m <- tn_3m/n_3m
+# false positive rate
+fpr_3m <- fp_3m/n_3m
+# false negative rate
+fnr_3m <- fn_3m/p_3m
+
+#accuracy 
+acc_3m <- (tp_3m + tn_3m)/(p_3m + n_3m)
+#precision (positive predictive value)
+ppv_3m <- tp_3m/(tp_3m + fp_3m)
+
+cm_ssp3_2020_m <- matrix(c(tp_3m, fn_3m, fp_3m, tn_3m), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp3_2020_m) <- c("Observed Pos", "Observed Neg")
+
+# cm of rates
+cm_ssp3_2020_perc_m <- matrix(c(tpr_3m, fnr_3m, fpr_3m, tnr_3m), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020_perc_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp3_2020_perc_m) <- c("Observed Pos", "Observed Neg")
+
+cm_ssp3_2020_m
+cm_ssp3_2020_perc_m
+acc_3m
+ppv_3m
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp3_2020_mosaic, col = c("red", "yellow", "slateblue", "black"))
+```
+
+#### SSP5
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_ssp5_2020_mosaic <- mapbio_crop_2020_mosaic + chen_crop_ssp5_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts_5m <- freq(chen_mapbio_ssp5_2020_mosaic)
+counts_5m
+
+# break up freq values ba
+nocrop_5m <- counts_5m[1, 3]
+crop_mapbio_only_5m <- counts_5m[2, 3]
+crop_chen_only_5m <- counts_5m[3,3]
+crop_both_5m <- counts_5m[4,3]
+
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_5m <- crop_mapbio_only_5m + crop_both_5m
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_5m <- nocrop_5m + crop_chen_only_5m
+
+# true positive
+tp_5m <- crop_both_5m
+# false positive
+fp_5m <- crop_chen_only_5m
+# true negative
+tn_5m <- nocrop_5m
+# false negative
+fn_5m <- crop_mapbio_only_5m
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_5m <- tp_5m/p_5m
+# specificity (true negative rate)
+tnr_5m <- tn_5m/n_5m
+# false positive rate
+fpr_5m <- fp_5m/n_5m
+# false negative rate
+fnr_5m <- fn_5m/p_5m
+
+#accuracy 
+acc_5m <- (tp_5m + tn_5m)/(p_5m + n_5m)
+#precision (positive predictive value)
+ppv_5m <- tp_5m/(tp_5m + fp_5m)
+
+cm_ssp5_2020_m <- matrix(c(tp_5m, fn_5m, fp_5m, tn_5m), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp5_2020_m) <- c("Observed Pos", "Observed Neg")
+
+# cm of rates
+cm_ssp5_2020_perc_m <- matrix(c(tpr_5m, fnr_5m, fpr_5m, tnr_5m), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020_perc_m) <- c("Predicted Pos", "Predicted Neg")
+rownames(cm_ssp5_2020_perc_m) <- c("Observed Pos", "Observed Neg")
+
+cm_ssp5_2020_m
+cm_ssp5_2020_perc_m
+acc_5m
+ppv_5m
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp5_2020_mosaic, col = c("red", "yellow", "slateblue", "black"))
+```
+
 
 
 
@@ -455,10 +741,10 @@ mapbio_crop_2015_mosaic <- project(mapbio_2015_reclass_mosaic, crs(chen_crop_201
 #### Only cropland
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbio_crop_2015 <- mapbio_crop_2015 + chen_crop_2015_brazil
+chen_mapbio_2015 <- mapbio_crop_2015 + chen_crop_2015_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts2015 <- freq(chen_mapbio_crop_2015)
+counts2015 <- freq(chen_mapbio_2015)
 counts2015
 
 # break up freq values ba
@@ -515,7 +801,7 @@ ppv2
 ```
 ```{r}
 # plot combined layer
-plot(chen_mapbio_crop_2015, col = c("red", "yellow", "slateblue", "black"))
+plot(chen_mapbio_2015, col = c("red", "yellow", "slateblue", "black"))
 ```
 
 
@@ -523,10 +809,10 @@ plot(chen_mapbio_crop_2015, col = c("red", "yellow", "slateblue", "black"))
 #### Cropland + Mosaic ag
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbio_crop_2015_mosaic <- mapbio_crop_2015_mosaic + chen_crop_2015_brazil
+chen_mapbio_2015_mosaic <- mapbio_crop_2015_mosaic + chen_crop_2015_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts2015 <- freq(chen_mapbio_crop_2015_mosaic)
+counts2015 <- freq(chen_mapbio_2015_mosaic)
 counts2015
 
 # break up freq values ba
@@ -583,10 +869,10 @@ ppv2
 
 ```{r}
 # plot combined layer
-plot(chen_mapbio_crop_2015_mosaic, col = c("red", "yellow", "slateblue", "black"))
+plot(chen_mapbio_2015_mosaic, col = c("red", "yellow", "slateblue", "black"))
 ```
 
-## On to greener pastures?
+## On to greener pastures? {.tabset}
 After exploring how MapBiomas' mosaic agriculture and pasture land classification affect the confusion matrix between MapBiomas and Chen, we know want to explore how MapBiomas' pasture classification affects the confusion matrix. 
 
 First, we want to run a quick check to see how much of the land classified as cropland my Chen is classified as pasture by MapBiomas. Quick visual inspection in QGIS reveals that the majority seems to be pasture, but we can quantify this below:
@@ -615,6 +901,8 @@ mapbio_m <- matrix(df_nocrop, ncol = 2, byrow = TRUE)
 mapbio_2020_cropped_masked_reclass <- classify(mapbio_2020_cropped_masked, mapbio_m)
 
 freq(mapbio_2020_cropped_masked_reclass)
+
+plot(mapbio_2020_cropped_masked_reclass)
 ```
 
 Yes, the majority of mis-matched pixels are classified as either "pasture" (15) or "mosaic agriculture and pasture" (21) by Mapbiomas
@@ -656,68 +944,203 @@ mapbio_2020_reclass_pasture <- classify(mapbio_2020_cropped, reclass_m_pasture)
 mapbio_crop_2020_pasture <- project(mapbio_2020_reclass_pasture, crs(chen_crop_ssp1_2020_brazil), method = "near")
 ```
 
+### SSP1
 ```{r}
 # add chen and mapbiomas rasters 
-chen_mapbio_crop_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_ssp1_2020_brazil
+chen_mapbio_ssp1_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_ssp1_2020_brazil
 
 # return frequency of each value (0, 1, 10, 11) in new raster
-counts2020p <- freq(chen_mapbio_crop_2020_pasture)
-counts2020p
+counts_1p <- freq(chen_mapbio_ssp1_2020_pasture)
+counts_1p
 
 # break up freq values ba
-nocrop_2020p <- counts2020p[1, 3]
-crop_mapbio_only_2020p <- counts2020p[2, 3]
-crop_chen_only_2020p <- counts2020p[3,3]
-crop_both_2020p <- counts2020p[4,3]
+nocrop_1p <- counts_1p[1, 3]
+crop_mapbio_only_1p <- counts_1p[2, 3]
+crop_chen_only_1p <- counts_1p[3,3]
+crop_both_1p <- counts_1p[4,3]
 
 ## break down into values for confusion matrix
 
 # number of real positive cases (P), pixels for which mapbiomas observed cropland
-p <- crop_mapbio_only_2020p + crop_both_2020p
+p_1p <- crop_mapbio_only_1p + crop_both_1p
 # number of real negative cases (N), pixels for which mapbiomas did not observe cropland
-n <- nocrop_2020p + crop_chen_only_2020p
+n_1p <- nocrop_1p + crop_chen_only_1p
 
 # true positive
-tp <- crop_both_2020p
+tp_1p <- crop_both_1p
 # false positive
-fp <- crop_chen_only_2020p
+fp_1p <- crop_chen_only_1p
 # true negative
-tn <- nocrop_2020p
+tn_1p <- nocrop_1p
 # false negative
-fn <- crop_mapbio_only_2020p
+fn_1p <- crop_mapbio_only_1p
 
 ## percentages/rates:
 # sensitivity (true positive rate)
-tpr <- tp/p
+tpr_1p <- tp_1p/p_1p
 # specificity (true negative rate)
-tnr <- tn/n
+tnr_1p <- tn_1p/n_1p
 # false positive rate
-fpr <- fp/n
+fpr_1p <- fp_1p/n_1p
 # false negative rate
-fnr <- fn/p
+fnr_1p <- fn_1p/p_1p
 
 #accuracy 
-acc <- (tp + tn)/(p+n)
+acc_1p <- (tp_1p + tn_1p)/(p_1p + n_1p)
 #precision (positive predictive value)
-ppv <- tp/(tp + fp)
+ppv_1p <- tp_1p/(tp_1p + fp_1p)
 
 
-cm_2020_pasture <- matrix(c(tp, fn, fp, tn), ncol=2, byrow=TRUE)
-colnames(cm_2020_pasture) <- c("Predicted Positive", "Predicted Negative")
-rownames(cm_2020_pasture) <- c("Observed Positive", "Observed Negative")
-cm_2020_pasture
+cm_ssp1_2020_p <- matrix(c(tp_1p, fn_1p, fp_1p, tn_1p), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp1_2020_p) <- c("Observed Positive", "Observed Negative")
 
-cm_2020_pasture_perc <- matrix(c(tpr, fnr, fpr, tnr), ncol=2, byrow=TRUE)
-colnames(cm_2020_pasture_perc) <- c("Predicted Positive", "Predicted Negative")
-rownames(cm_2020_pasture_perc) <- c("Observed Positive", "Observed Negative")
-cm_2020_pasture_perc
 
-acc
-ppv
+cm_ssp1_2020_perc_p <- matrix(c(tpr_1p, fnr_1p, fpr_1p, tnr_1p), ncol=2, byrow=TRUE)
+colnames(cm_ssp1_2020_perc_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp1_2020_perc_p) <- c("Observed Positive", "Observed Negative")
+
+cm_ssp1_2020_p
+cm_ssp1_2020_perc_p
+acc_1p
+ppv_1p
 ```
 
 ```{r}
 # plot combined layer
-plot(chen_mapbio_crop_2020_pasture, col = c("red", "yellow", "slateblue", "black"))
+plot(chen_mapbio_ssp1_2020_pasture, col = c("red", "yellow", "slateblue", "black"))
 ```
 
+### SSP3
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_ssp3_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_ssp3_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts_3p <- freq(chen_mapbio_ssp3_2020_pasture)
+counts_3p
+
+# break up freq values ba
+nocrop_3p <- counts_3p[1, 3]
+crop_mapbio_only_3p <- counts_3p[2, 3]
+crop_chen_only_3p <- counts_3p[3,3]
+crop_both_3p <- counts_3p[4,3]
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_3p <- crop_mapbio_only_3p + crop_both_3p
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_3p <- nocrop_3p + crop_chen_only_3p
+
+# true positive
+tp_3p <- crop_both_3p
+# false positive
+fp_3p <- crop_chen_only_3p
+# true negative
+tn_3p <- nocrop_3p
+# false negative
+fn_3p <- crop_mapbio_only_3p
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_3p <- tp_3p/p_3p
+# specificity (true negative rate)
+tnr_3p <- tn_3p/n_3p
+# false positive rate
+fpr_3p <- fp_3p/n_3p
+# false negative rate
+fnr_3p <- fn_3p/p_3p
+
+#accuracy 
+acc_3p <- (tp_3p + tn_3p)/(p_3p + n_3p)
+#precision (positive predictive value)
+ppv_3p <- tp_3p/(tp_3p + fp_3p)
+
+
+cm_ssp3_2020_p <- matrix(c(tp_3p, fn_3p, fp_3p, tn_3p), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp3_2020_p) <- c("Observed Positive", "Observed Negative")
+
+
+cm_ssp3_2020_perc_p <- matrix(c(tpr_3p, fnr_3p, fpr_3p, tnr_3p), ncol=2, byrow=TRUE)
+colnames(cm_ssp3_2020_perc_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp3_2020_perc_p) <- c("Observed Positive", "Observed Negative")
+
+cm_ssp3_2020_p
+cm_ssp3_2020_perc_p
+acc_3p
+ppv_3p
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp3_2020_pasture, col = c("red", "yellow", "slateblue", "black"))
+```
+
+### SSP5
+```{r}
+# add chen and mapbiomas rasters 
+chen_mapbio_ssp5_2020_pasture <- mapbio_crop_2020_pasture + chen_crop_ssp5_2020_brazil
+
+# return frequency of each value (0, 1, 10, 11) in new raster
+counts_5p <- freq(chen_mapbio_ssp5_2020_pasture)
+counts_5p
+
+# break up freq values ba
+nocrop_5p <- counts_5p[1, 3]
+crop_mapbio_only_5p <- counts_5p[2, 3]
+crop_chen_only_5p <- counts_5p[3,3]
+crop_both_5p <- counts_5p[4,3]
+
+## break down into values for confusion matrix
+
+# number of real positive cases (P), pixels for which mapbiomas observed cropland
+p_5p <- crop_mapbio_only_5p + crop_both_5p
+# number of real negative cases (N), pixels for which mapbiomas did not observe cropland
+n_5p <- nocrop_5p + crop_chen_only_5p
+
+# true positive
+tp_5p <- crop_both_5p
+# false positive
+fp_5p <- crop_chen_only_5p
+# true negative
+tn_5p <- nocrop_5p
+# false negative
+fn_5p <- crop_mapbio_only_5p
+
+## percentages/rates:
+# sensitivity (true positive rate)
+tpr_5p <- tp_5p/p_5p
+# specificity (true negative rate)
+tnr_5p <- tn_5p/n_5p
+# false positive rate
+fpr_5p <- fp_5p/n_5p
+# false negative rate
+fnr_5p <- fn_5p/p_5p
+
+#accuracy 
+acc_5p <- (tp_5p + tn_5p)/(p_5p + n_5p)
+#precision (positive predictive value)
+ppv_5p <- tp_5p/(tp_5p + fp_5p)
+
+
+cm_ssp5_2020_p <- matrix(c(tp_5p, fn_5p, fp_5p, tn_5p), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp5_2020_p) <- c("Observed Positive", "Observed Negative")
+
+
+cm_ssp5_2020_perc_p <- matrix(c(tpr_5p, fnr_5p, fpr_5p, tnr_5p), ncol=2, byrow=TRUE)
+colnames(cm_ssp5_2020_perc_p) <- c("Predicted Positive", "Predicted Negative")
+rownames(cm_ssp5_2020_perc_p) <- c("Observed Positive", "Observed Negative")
+
+cm_ssp5_2020_p
+cm_ssp5_2020_perc_p
+acc_5p
+ppv_5p
+```
+
+```{r}
+# plot combined layer
+plot(chen_mapbio_ssp5_2020_pasture, col = c("red", "yellow", "slateblue", "black"))
+```
