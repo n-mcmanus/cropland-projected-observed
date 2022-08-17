@@ -9,7 +9,7 @@ output:
     theme: cerulean
     code_folding: hide
     smooth_scroll: yes
-    collapsed: yes
+    collapsed: no
 ---
 
 ```{r setup, include=TRUE, message = FALSE, warning = FALSE}
