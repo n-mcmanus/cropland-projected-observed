@@ -1,5 +1,5 @@
 ---
-title: "Brazil Cropland"
+title: "Brazil Cropland (Projected vs Observed)"
 author: "Nick McManus"
 date: '2022-07-28'
 output: 
@@ -24,9 +24,13 @@ library(tidyverse) #always
 library(caret) # for confusion matrix
 ```
 
-## ROI
+## Read in Data & Reclassify
 
-This analysis will be focusing on cropland and datasets in Brazil. 
+In this section, we will be reading in the GeoTiff rasters, then resampling, croping, and reclassifying the layers as needed for later analyses. 
+
+### ROI
+
+Our region of interest is Brazil, so the shapefile for this country will be read in and used to crop LULC rasters. 
 
 ```{r}
 # get brazil from rnaturalearth data
@@ -41,8 +45,6 @@ ggplot() +
   geom_sf(data = brazil)
 ```
 
-
-## Read in Data
 
 ### Projected Cropland
 First read in projected 2020 cropland from Chen et al. 2022. Then, crop and mask this global projection to just Brazil. Finally, reclassify the raster to keep only pixels representing cropland.
@@ -100,7 +102,9 @@ plot(chen_crop_ssp5_2020_brazil)
 
 ### Observed Cropland
 
-For observed cropland in Brazil, we will use data from MapBiomas (Collection 6), which uses Landsat mosaics to classify LULC at 30m resolution. (More information and GeoTiff source found at: https://mapbiomas.org/en/colecoes-mapbiomas-1?cama_set_language=en)
+For observed cropland in Brazil, we will use data from MapBiomas (Collection 6), which uses Landsat mosaics to classify LULC at 30m resolution. After reading in the data, we want to resample the layer to match the resolution of Chen et al. LULC. 
+
+(More information and GeoTiff source found at: https://mapbiomas.org/en/colecoes-mapbiomas-1?cama_set_language=en)
 
 ```{r, eval=FALSE}
 # WARNING: below analysis (aggregate step) will take a long time to run!
@@ -113,8 +117,8 @@ mapbio_2020 <- rast("data/mapbiomas/brasil_coverage_2020.tif")
 
 # change resolution from 30m to roughly 1km
 # to figure out factor that gets res closest to target raster (Chen), use this:
-    factor <- ceiling(res(chen_crop_ssp1_2020_brazil)[1]/res(mapbio_2020)[1])
-    factor
+factor <- ceiling(res(chen_crop_ssp1_2020_brazil)[1]/res(mapbio_2020)[1])
+factor
 
 # now change resolution using terra:aggregate()
 mapbio_2020_agg <- aggregate(mapbio_2020,   #raster 
@@ -181,7 +185,8 @@ mapbio_2020_reclass <- classify(mapbio_2020_cropped, reclass_m)
 # crs do not match, so use terra::project() to match with chen raster
 mapbio_crop_2020 <- project(mapbio_2020_reclass, crs(chen_crop_ssp1_2020_brazil), method = "near")
 
-
+# plot results
+plot(mapbio_crop_2020)
 
 
 ## include ag mosaic in new reclassification
@@ -217,6 +222,9 @@ reclass_m_mosaic <- matrix(reclass_df_mosaic, ncol = 2, byrow = TRUE)
 mapbio_2020_reclass_mosaic <- classify(mapbio_2020_cropped, reclass_m_mosaic)
 
 mapbio_crop_2020_mosaic <- project(mapbio_2020_reclass_mosaic, crs(chen_crop_ssp1_2020_brazil), method = "near")
+
+#plot results
+plot(mapbio_crop_2020_mosaic)
 
 ```
 
