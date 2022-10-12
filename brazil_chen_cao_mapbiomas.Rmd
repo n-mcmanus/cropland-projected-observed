@@ -427,14 +427,14 @@ fnr_5 <- fn_5/p_5
 #accuracy 
 acc_5 <- (tp_5 + tn_5)/(p_5 + n_5)
 #precision (positive predictive value)
-ppv_5 <- tp_3/(tp_5 + fp_5)
+ppv_5 <- tp_5/(tp_5 + fp_5)
 
 cm_ssp5_2020 <- matrix(c(tp_5, fn_5, fp_5, tn_5), ncol=2, byrow=TRUE)
 colnames(cm_ssp5_2020) <- c("Predicted Pos", "Predicted Neg")
 rownames(cm_ssp5_2020) <- c("Observed Pos", "Observed Neg")
 
 # cm of rates
-cm_ssp5_2020_perc <- matrix(c(tpr_3, fnr_3, fpr_3, tnr_3), ncol=2, byrow=TRUE)
+cm_ssp5_2020_perc <- matrix(c(tpr_5, fnr_5, fpr_5, tnr_5), ncol=2, byrow=TRUE)
 colnames(cm_ssp5_2020_perc) <- c("Predicted Pos", "Predicted Neg")
 rownames(cm_ssp5_2020_perc) <- c("Observed Pos", "Observed Neg")
 
